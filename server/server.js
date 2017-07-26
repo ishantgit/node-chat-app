@@ -3,6 +3,19 @@ const http = require('http');
 const express = require('express');
 const socketIO = require('socket.io');
 
+var redis = require('redis');
+var redisClient = redis.createClient({host : 'localhost', port : 6379});
+
+redisClient.on('ready',function() {
+ console.log("Redis is ready");
+});
+
+redisClient.on('error',function() {
+ console.log("Error in Redis");
+});
+
+
+
 const {generateMessage,generateLocationMessage} = require('./utils/message.js');
 const {isRealString} = require('./utils/validation.js');
 const {Users} = require('./utils/users.js');
@@ -13,7 +26,14 @@ var server = http.createServer(app);
 var io = socketIO(server);
 var users = new Users();
 
+
 app.use(express.static(publicPath));
+var chatters = [];
+
+// Store messages in chatroom
+var chat_messages = [];
+
+
 
 io.on('connection',(socket)=>{
   console.log('new user connected');
@@ -22,6 +42,15 @@ io.on('connection',(socket)=>{
     var user = users.getUser(socket.id);
     if(user && isRealString(message.text)){
       io.to(user.room).emit('newMessage',generateMessage(user.name,message.text));
+      chatters.push(generateMessage(user.name,message.text));
+      redisClient.set("chatters",JSON.stringify(chatters),function(err,reply){
+        console.log(err);
+        console.log(reply);
+      });
+      redisClient.get("chatters",function(err,reply){
+        console.log(err);
+        console.log(reply);
+      });
     }
     callback('This is from server');
     // socket.broadcast.emit('newMessage',{
@@ -54,7 +83,7 @@ io.on('connection',(socket)=>{
   socket.on('createLocationMessage',(coords,callback) => {
     var user = users.getUser(socket.id);
     if(user){
-      io.to(user.room).emit('newLocationMessage',generateLocationMessage(user.name,coords.latitude, coords.longitude));  
+      io.to(user.room).emit('newLocationMessage',generateLocationMessage(user.name,coords.latitude, coords.longitude));
     }
     callback('message send')
   });
